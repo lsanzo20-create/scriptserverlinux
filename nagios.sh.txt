@@ -1,0 +1,162 @@
+﻿#!/bin/bash
+
+
+# VARIABLES
+NAGIOS_VERSION="4.5.9"
+NAGIOS_PLUGINS_VERSION="2.4.12"
+NAGIOS_DIR="/usr/local/nagios"
+NAGIOS_USER="nagios"
+NAGIOS_GROUP="nagios"
+TMP_DIR="/tmp"
+
+
+# FUNCIÓN LOG
+log() {
+    echo -e "\n[INFO] $1\n"
+}
+
+
+# ACTUALIZAR SISTEMA
+log "Actualizando sistema..."
+apt update && apt upgrade -y
+
+
+# INSTALAR DEPENDENCIAS
+log "Instalando dependencias..."
+apt install -y \
+apache2 \
+php \
+libapache2-mod-php \
+build-essential \
+autoconf \
+gcc \
+make \
+wget \
+unzip \
+openssl \
+libssl-dev \
+libgd-dev \
+snmp \
+libnet-snmp-perl \
+gettext \
+curl
+
+
+# CREAR USUARIO Y GRUPO
+log "Creando usuario y grupo Nagios..."
+
+
+groupadd nagios
+useradd nagios -m -s /bin/bash -g nagios
+
+
+usermod -aG nagios www-data
+
+
+# DESCARGAR NAGIOS CORE
+log "Descargando Nagios Core..."
+
+
+cd $TMP_DIR
+
+
+wget -O nagioscore.tar.gz \
+https://github.com/NagiosEnterprises/nagioscore/archive/nagios-${NAGIOS_VERSION}.tar.gz
+
+
+tar xzf nagioscore.tar.gz
+
+
+cd nagioscore-nagios-${NAGIOS_VERSION}
+
+
+# COMPILAR NAGIOS
+log "Compilando Nagios..."
+
+
+./configure --with-httpd-conf=/etc/apache2/sites-enabled
+make all
+
+
+# INSTALAR NAGIOS
+log "Instalando Nagios..."
+
+
+make install-groups-users
+make install
+make install-daemoninit
+make install-commandmode
+make install-config
+make install-webconf
+
+
+# HABILITAR MÓDULOS APACHE
+log "Configurando Apache..."
+
+
+a2enmod rewrite
+a2enmod cgi
+
+
+# CREAR USUARIO WEB
+log "Configurando usuario web nagiosadmin..."
+
+
+htpasswd -c /usr/local/nagios/etc/htpasswd.users nagiosadmin
+
+
+# REINICIAR APACHE
+systemctl restart apache2
+
+
+# DESCARGAR PLUGINS
+log "Descargando plugins..."
+
+
+cd $TMP_DIR
+
+
+wget https://nagios-plugins.org/download/nagios-plugins-${NAGIOS_PLUGINS_VERSION}.tar.gz
+
+
+tar xzf nagios-plugins-${NAGIOS_PLUGINS_VERSION}.tar.gz
+
+
+cd nagios-plugins-${NAGIOS_PLUGINS_VERSION}
+
+
+# COMPILAR PLUGINS
+log "Compilando plugins..."
+
+
+./configure \
+--with-nagios-user=$NAGIOS_USER \
+--with-nagios-group=$NAGIOS_GROUP
+
+
+make
+make install
+
+
+# HABILITAR SERVICIOS
+log "Habilitando servicios..."
+
+
+systemctl enable apache2
+systemctl enable nagios
+
+
+systemctl restart apache2
+systemctl start nagios
+
+
+# FINALIZACIÓN
+log "Instalación finalizada correctamente"
+
+
+echo "Accede desde:"
+echo "http://IP_SERVIDOR/nagios"
+
+
+echo "Usuario: nagiosadmin"
+echo "Contraseña: la configurada durante la instalación"
